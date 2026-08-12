@@ -12,20 +12,22 @@
 <body>
   <div class="wrap">
     <div class="card form-card">
-      <span class="event-tag">CDP 2026–2027 · UBL</span>
+      <div id="formSection">
+        <span class="event-tag">CDP 2026–2027 · UBL</span>
 
-      <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
-      <p class="step-count" id="stepCount">Pertanyaan 1 dari 10</p>
+        <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+        <p class="step-count" id="stepCount">Pertanyaan 1 dari 10</p>
 
-      <form id="kenalanForm">
-        <div class="step-stage" id="stepStage"></div>
+        <form id="kenalanForm">
+          <div class="step-stage" id="stepStage"></div>
 
-        <div class="step-nav">
-          <button type="button" id="backBtn" class="btn-secondary" hidden>← Kembali</button>
-          <button type="button" id="nextBtn" class="btn-primary">Lanjut →</button>
-        </div>
-        <p class="status" id="statusMsg" aria-live="polite"></p>
-      </form>
+          <div class="step-nav">
+            <button type="button" id="backBtn" class="btn-secondary" hidden>← Kembali</button>
+            <button type="button" id="nextBtn" class="btn-primary">Lanjut →</button>
+          </div>
+          <p class="status" id="statusMsg" aria-live="polite"></p>
+        </form>
+      </div>
 
       <div id="doneScreen" class="done-screen" hidden>
         <div class="done-emoji">🎉</div>
@@ -63,6 +65,7 @@
     const nextBtn = document.getElementById('nextBtn');
     const statusMsg = document.getElementById('statusMsg');
     const form = document.getElementById('kenalanForm');
+    const formSection = document.getElementById('formSection');
     const doneScreen = document.getElementById('doneScreen');
 
     const STEP_ANIM_MS = 320;
@@ -163,7 +166,7 @@
           if (json.ok === false && json.error === 'busy') {
             throw new Error('busy');
           }
-          form.hidden = true;
+          formSection.hidden = true;
           doneScreen.hidden = false;
           return;
         } catch (err) {
