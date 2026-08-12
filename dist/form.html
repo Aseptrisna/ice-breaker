@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kenalan Yuk! — CDP 2026 UBL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="card form-card">
+      <span class="event-tag">CDP 2026–2027 · UBL</span>
+
+      <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+      <p class="step-count" id="stepCount">Pertanyaan 1 dari 10</p>
+
+      <form id="kenalanForm">
+        <div class="step-stage" id="stepStage"></div>
+
+        <div class="step-nav">
+          <button type="button" id="backBtn" class="btn-secondary" hidden>← Kembali</button>
+          <button type="button" id="nextBtn" class="btn-primary">Lanjut →</button>
+        </div>
+        <p class="status" id="statusMsg" aria-live="polite"></p>
+      </form>
+
+      <div id="doneScreen" class="done-screen" hidden>
+        <div class="done-emoji">🎉</div>
+        <h2>Terkirim!</h2>
+        <p>Terima kasih sudah kenalan — lihat jawabanmu di layar depan!</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // GANTI INI dengan URL Web App dari Apps Script (lihat apps-script.gs)
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyg-LTUpiHRTNUm00Mu5Ik-3238TYIgitoc2lTI1zwdEZ-4RgsFDmfC3aiPqXk65-pp/exec";
+
+    const QUESTIONS = [
+      { key: 'nama', label: 'Siapa nama panggilanmu?', type: 'text', placeholder: 'Nama kamu' },
+      { key: 'prodi', label: 'Kamu dari program studi apa?', type: 'text', placeholder: 'cth: Sistem Informasi' },
+      { key: 'asal', label: 'Asal kota/daerahmu mana?', type: 'text', placeholder: 'cth: Bandar Lampung' },
+      { key: 'citaCita', label: 'Apa cita-cita / profesi impianmu?', type: 'text', placeholder: 'cth: AI Engineer' },
+      { key: 'bidangIT', label: 'Bidang IT apa yang paling menarik buatmu?', type: 'select', options: ['AI / Machine Learning', 'Cybersecurity', 'Data Science', 'Cloud Computing', 'Software Development', 'UI/UX Design', 'Lainnya'] },
+      { key: 'satuKata', label: 'Satu kata untuk gambarkan dirimu?', type: 'text', placeholder: 'cth: Gigih' },
+      { key: 'hobi', label: 'Apa hobimu?', type: 'text', placeholder: 'cth: Main gitar' },
+      { key: 'alasanUBL', label: 'Kenapa kamu pilih UBL?', type: 'text', placeholder: 'Ceritakan singkat' },
+      { key: 'motto', label: 'Apa motto hidupmu?', type: 'text', placeholder: 'Motto andalanmu' },
+      { key: 'excited', label: 'Hal apa yang paling bikin kamu excited soal masa depan?', type: 'text', placeholder: 'Ceritakan singkat' },
+    ];
+
+    const answers = {};
+    let current = 0;
+    let isTransitioning = false; // cegah klik ganda/cepat melompati pertanyaan
+
+    const stepStage = document.getElementById('stepStage');
+    const stepCount = document.getElementById('stepCount');
+    const progressBar = document.getElementById('progressBar');
+    const backBtn = document.getElementById('backBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const statusMsg = document.getElementById('statusMsg');
+    const form = document.getElementById('kenalanForm');
+    const doneScreen = document.getElementById('doneScreen');
+
+    const STEP_ANIM_MS = 320;
+
+    function renderStep(direction) {
+      const q = QUESTIONS[current];
+      const field = q.type === 'select'
+        ? `<select id="fieldInput" required>
+             <option value="" disabled ${!answers[q.key] ? 'selected' : ''}>Pilih salah satu</option>
+             ${q.options.map(o => `<option ${answers[q.key] === o ? 'selected' : ''}>${o}</option>`).join('')}
+           </select>`
+        : `<input type="text" id="fieldInput" required maxlength="120" placeholder="${q.placeholder}" value="${answers[q.key] ? escapeAttr(answers[q.key]) : ''}" />`;
+
+      stepStage.innerHTML = `
+        <div class="step-anim step-anim-${direction}">
+          <label class="step-label">${q.label}</label>
+          ${field}
+        </div>`;
+
+      stepCount.textContent = `Pertanyaan ${current + 1} dari ${QUESTIONS.length}`;
+      progressBar.style.width = `${((current + 1) / QUESTIONS.length) * 100}%`;
+      backBtn.hidden = current === 0;
+      nextBtn.textContent = current === QUESTIONS.length - 1 ? 'Kirim Jawaban ✓' : 'Lanjut →';
+      statusMsg.textContent = '';
+      statusMsg.className = 'status';
+
+      const input = document.getElementById('fieldInput');
+      // fokus sedikit ditunda agar animasi slide sempat mulai dulu, terasa lebih halus di HP
+      setTimeout(() => input.focus(), 60);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); goNext(); }
+      });
+    }
+
+    function escapeAttr(str) {
+      return String(str).replace(/"/g, '&quot;');
+    }
+
+    function withTransitionLock(fn) {
+      if (isTransitioning) return;
+      isTransitioning = true;
+      fn();
+      setTimeout(() => { isTransitioning = false; }, STEP_ANIM_MS);
+    }
+
+    function goNext() {
+      if (isTransitioning) return;
+      const input = document.getElementById('fieldInput');
+      if (!input.value.trim()) {
+        input.focus();
+        statusMsg.textContent = 'Isi dulu ya sebelum lanjut.';
+        statusMsg.className = 'status error';
+        return;
+      }
+      answers[QUESTIONS[current].key] = input.value.trim();
+
+      if (current === QUESTIONS.length - 1) {
+        submitAnswers();
+        return;
+      }
+      withTransitionLock(() => {
+        current++;
+        renderStep('next');
+      });
+    }
+
+    function goBack() {
+      if (isTransitioning || current === 0) return;
+      withTransitionLock(() => {
+        current--;
+        renderStep('back');
+      });
+    }
+
+    function fetchWithTimeout(url, options, timeoutMs) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+    }
+
+    async function submitAnswers() {
+      if (SCRIPT_URL.includes('PASTE_URL')) {
+        statusMsg.textContent = 'Belum dikonfigurasi: isi SCRIPT_URL di form.html terlebih dahulu.';
+        statusMsg.className = 'status error';
+        return;
+      }
+      nextBtn.disabled = true;
+      backBtn.disabled = true;
+
+      const MAX_ATTEMPTS = 4;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        nextBtn.textContent = attempt === 1 ? 'Mengirim...' : `Mencoba lagi (${attempt}/${MAX_ATTEMPTS})...`;
+        statusMsg.textContent = attempt === 1 ? '' : 'Server sedang ramai, mencoba lagi...';
+        statusMsg.className = 'status';
+        try {
+          const res = await fetchWithTimeout(SCRIPT_URL, { method: 'POST', body: JSON.stringify(answers) }, 15000);
+          const json = await res.json().catch(() => ({ ok: true })); // respons non-JSON tetap dianggap terkirim
+          if (json.ok === false && json.error === 'busy') {
+            throw new Error('busy');
+          }
+          form.hidden = true;
+          doneScreen.hidden = false;
+          return;
+        } catch (err) {
+          if (attempt === MAX_ATTEMPTS) {
+            statusMsg.textContent = 'Gagal mengirim setelah beberapa kali coba. Cek koneksi lalu tekan "Kirim Jawaban" lagi.';
+            statusMsg.className = 'status error';
+            nextBtn.disabled = false;
+            backBtn.disabled = false;
+            nextBtn.textContent = 'Kirim Jawaban ✓';
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 800 * attempt)); // backoff sebelum coba lagi
+        }
+      }
+    }
+
+    nextBtn.addEventListener('click', goNext);
+    backBtn.addEventListener('click', goBack);
+
+    renderStep('next');
+  </script>
+</body>
+</html>

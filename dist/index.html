@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kenalan Yuk! — Live Wall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shared.css" />
+</head>
+<body class="display-body">
+  <header class="display-header">
+    <div>
+      <span class="event-tag">CDP 2026–2027 · UBL</span>
+      <h1 id="questionTitle">Kenalan Yuk! — Live Wall</h1>
+    </div>
+    <div class="live-count">
+      <span class="dot"></span>
+      <span id="countNum">0</span> peserta sudah kenalan
+    </div>
+  </header>
+
+  <main class="stage" id="stage"></main>
+
+  <footer class="slide-nav">
+    <button type="button" id="prevBtn" class="nav-arrow" aria-label="Sebelumnya">‹</button>
+    <div class="nav-dots" id="navDots"></div>
+    <button type="button" id="nextBtn" class="nav-arrow" aria-label="Berikutnya">›</button>
+  </footer>
+
+  <script>
+    // GANTI INI dengan URL Web App dari Apps Script yang sama seperti di form.html
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyg-LTUpiHRTNUm00Mu5Ik-3238TYIgitoc2lTI1zwdEZ-4RgsFDmfC3aiPqXk65-pp/exec";
+    const POLL_MS = 4000;
+
+    const QUESTIONS = [
+      { key: 'nama', label: 'Kenalan Dulu Yuk!', viz: 'chips' },
+      { key: 'prodi', label: 'Program Studi', viz: 'tally' },
+      { key: 'asal', label: 'Asal Kota/Daerah', viz: 'tally' },
+      { key: 'citaCita', label: 'Cita-Cita Impian', viz: 'wordcloud' },
+      { key: 'bidangIT', label: 'Bidang IT Paling Menarik', viz: 'tally' },
+      { key: 'satuKata', label: 'Satu Kata untuk Diri Sendiri', viz: 'wordcloud' },
+      { key: 'hobi', label: 'Hobi Peserta', viz: 'wordcloud' },
+      { key: 'alasanUBL', label: 'Alasan Pilih UBL', viz: 'quotes' },
+      { key: 'motto', label: 'Motto Hidup', viz: 'quotes' },
+      { key: 'excited', label: 'Paling Excited Soal Masa Depan', viz: 'quotes' },
+    ];
+    // index -1 = layar pembuka (menunggu peserta scan QR), 0..9 = pertanyaan, 10 = penutup
+    const TOTAL_SLIDES = QUESTIONS.length + 2;
+
+    let items = [];
+    let current = -1;
+
+    const stage = document.getElementById('stage');
+    const questionTitle = document.getElementById('questionTitle');
+    const countNum = document.getElementById('countNum');
+    const navDots = document.getElementById('navDots');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+
+    for (let i = 0; i < TOTAL_SLIDES; i++) {
+      const dot = document.createElement('span');
+      dot.className = 'nav-dot';
+      navDots.appendChild(dot);
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function tallyOf(list, key) {
+      const counts = {};
+      list.forEach((it) => {
+        const v = (it[key] || '').trim();
+        if (!v) return;
+        const k = v.toLowerCase();
+        counts[k] = counts[k] || { label: v, count: 0 };
+        counts[k].count++;
+      });
+      return Object.values(counts).sort((a, b) => b.count - a.count);
+    }
+
+    function renderWaiting() {
+      questionTitle.textContent = 'Kenalan Yuk! — Live Wall';
+      stage.innerHTML = `
+        <div class="waiting-screen">
+          <p class="waiting-eyebrow">Sebelum kita mulai...</p>
+          <h2>Scan QR Code &amp; Kenalan Yuk!</h2>
+          <img class="waiting-qr" src="qr-icebreaker.svg" alt="QR code form Kenalan Yuk" />
+          <p class="waiting-qr-url">icebreaker.sta.my.id/form.html</p>
+          <p class="waiting-hint">${items.length} peserta sudah mengisi — tekan <strong>›</strong> untuk mulai lihat hasilnya bareng-bareng.</p>
+        </div>`;
+    }
+
+    function renderClosing() {
+      questionTitle.textContent = 'Terima Kasih!';
+      stage.innerHTML = `
+        <div class="waiting-screen">
+          <p class="waiting-eyebrow">Selesai kenalan</p>
+          <h2>Total ${items.length} Peserta Sudah Kenalan! 🎉</h2>
+          <p class="waiting-hint">Yuk lanjut ke materi utama.</p>
+        </div>`;
+    }
+
+    function renderQuestion(q) {
+      questionTitle.textContent = q.label;
+      if (q.viz === 'chips') return renderChips(q);
+      if (q.viz === 'tally') return renderTallyView(q);
+      if (q.viz === 'wordcloud') return renderWordCloudView(q);
+      if (q.viz === 'quotes') return renderQuotesView(q);
+    }
+
+    const MAX_CHIPS = 150; // batasi jumlah chip yang dirender agar tetap ringan walau ratusan peserta
+
+    function renderChips(q) {
+      const all = [...items].reverse();
+      const recent = all.slice(0, MAX_CHIPS);
+      if (!recent.length) {
+        stage.innerHTML = '<p class="empty-big">Menunggu peserta pertama...</p>';
+        return;
+      }
+      const extra = all.length - recent.length;
+      stage.innerHTML = `<div class="chip-wall">${recent
+        .map((it, i) => `<span class="chip" style="animation-delay:${Math.min(i, 20) * 0.04}s">${escapeHtml(it[q.key] || 'Anonim')}</span>`)
+        .join('')}${extra > 0 ? `<span class="chip chip-more">+${extra} lainnya</span>` : ''}</div>`;
+    }
+
+    function renderTallyView(q) {
+      const tally = tallyOf(items, q.key).slice(0, 8);
+      if (!tally.length) {
+        stage.innerHTML = '<p class="empty-big">Belum ada data</p>';
+        return;
+      }
+      const max = tally[0].count;
+      stage.innerHTML = `<div class="tally-view">${tally
+        .map(
+          (t, i) => `
+        <div class="tally-view-row" style="animation-delay:${i * 0.06}s">
+          <span class="tally-view-label">${escapeHtml(t.label)}</span>
+          <div class="tally-view-track"><div class="tally-view-bar" style="width:${(t.count / max) * 100}%"></div></div>
+          <span class="tally-view-count">${t.count}</span>
+        </div>`
+        )
+        .join('')}</div>`;
+    }
+
+    function renderWordCloudView(q) {
+      const tally = tallyOf(items, q.key).slice(0, 30);
+      if (!tally.length) {
+        stage.innerHTML = '<p class="empty-big">Belum ada data</p>';
+        return;
+      }
+      const max = tally[0].count;
+      const min = tally[tally.length - 1].count;
+      stage.innerHTML = `<div class="wordcloud-view">${tally
+        .map((t) => {
+          const scale = max === min ? 0.5 : (t.count - min) / (max - min);
+          const size = 1.3 + scale * 3.2;
+          const weight = 500 + Math.round(scale * 350);
+          return `<span class="cloud-word-big" style="font-size:${size}rem;font-weight:${weight}">${escapeHtml(t.label)}</span>`;
+        })
+        .join(' ')}</div>`;
+    }
+
+    function renderQuotesView(q) {
+      const recent = [...items].reverse().slice(0, 10);
+      if (!recent.length) {
+        stage.innerHTML = '<p class="empty-big">Belum ada jawaban</p>';
+        return;
+      }
+      stage.innerHTML = `<div class="quotes-view">${recent
+        .map(
+          (it, i) => `
+        <div class="quote-card" style="animation-delay:${i * 0.08}s">
+          <p class="quote-text">"${escapeHtml(it[q.key] || '-')}"</p>
+          <p class="quote-author">— ${escapeHtml(it.nama || 'Anonim')}</p>
+        </div>`
+        )
+        .join('')}</div>`;
+    }
+
+    function render() {
+      navDots.querySelectorAll('.nav-dot').forEach((d, i) => d.classList.toggle('active', i === current + 1));
+      prevBtn.disabled = current <= -1;
+      nextBtn.disabled = current >= QUESTIONS.length;
+
+      if (current === -1) return renderWaiting();
+      if (current === QUESTIONS.length) return renderClosing();
+      renderQuestion(QUESTIONS[current]);
+    }
+
+    function goTo(index) {
+      current = Math.min(Math.max(index, -1), QUESTIONS.length);
+      render();
+    }
+
+    prevBtn.addEventListener('click', () => goTo(current - 1));
+    nextBtn.addEventListener('click', () => goTo(current + 1));
+    document.addEventListener('keydown', (e) => {
+      if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); goTo(current + 1); }
+      if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); goTo(current - 1); }
+    });
+
+    async function poll() {
+      if (SCRIPT_URL.includes('PASTE_URL')) {
+        stage.innerHTML = '<p class="empty-big">Belum dikonfigurasi: isi SCRIPT_URL di index.html terlebih dahulu.</p>';
+        return;
+      }
+      try {
+        const res = await fetch(SCRIPT_URL, { cache: 'no-store' });
+        const json = await res.json();
+        items = json.data || [];
+        countNum.textContent = items.length;
+        render();
+      } catch (err) {
+        // biarkan tampilan terakhir, coba lagi di polling berikutnya
+      }
+    }
+
+    render();
+    poll();
+    setInterval(poll, POLL_MS);
+  </script>
+</body>
+</html>
